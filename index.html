@@ -47,8 +47,8 @@
 
     <div class="toolbar">
       <input type="file" id="fileInput" accept=".mid,.midi,.xml,.musicxml" />
-      <button class="btn" id="playBtn">Play</button>
-      <button class="btn" id="stopBtn">Stop</button>
+      <button class="btn" id="playBtn">Tocar</button>
+      <button class="btn" id="stopBtn">Parar</button>
       <label>BPM <input id="bpm" type="number" min="30" max="300" value="120" style="width:78px" /></label>
       <label>Instrumento
         <select id="instrumentSel">
@@ -96,18 +96,26 @@
       const bpmEl = document.getElementById('bpm');
       const instrumentSel = document.getElementById('instrumentSel');
 
+      const CONFIG = {
+        snap: 0.25,
+        rowHeight: 20,
+        minPitch: 21,
+        maxPitch: 108
+      };
+
       let notes = [];
       let noteId = 1;
       let selectedId = null;
       let audioContext = null;
       let instrument = null;
+      let loadedProgram = null;
       let activeNodes = [];
       let isPlaying = false;
       let pxPerBeat = 64;
-      const rowH = 20;
-      const minPitch = 21;
-      const maxPitch = 108;
-      const snap = 0.25;
+      const rowH = CONFIG.rowHeight;
+      const minPitch = CONFIG.minPitch;
+      const maxPitch = CONFIG.maxPitch;
+      const snap = CONFIG.snap;
 
       function setStatus(msg) { statusEl.textContent = msg; }
       function snapBeat(v) { return Math.max(0, Math.round(v / snap) * snap); }
@@ -235,13 +243,13 @@
         if (!audioContext || audioContext.state === 'closed') audioContext = new (window.AudioContext || window.webkitAudioContext)();
         if (audioContext.state === 'suspended') await audioContext.resume();
         const program = instrumentSel.value;
-        if (!instrument || instrument.__program !== program) {
+        if (!instrument || loadedProgram !== program) {
           setStatus('Carregando SoundFont GM...');
           instrument = await Soundfont.instrument(audioContext, program, {
             soundfont: 'FluidR3_GM',
             nameToUrl: (name, sf) => `https://gleitz.github.io/midi-js-soundfonts/${sf}/${name}-mp3.js`
           });
-          instrument.__program = program;
+          loadedProgram = program;
         }
       }
 
@@ -281,6 +289,7 @@
         return parsed.sort((a, b) => a.start - b.start);
       }
 
+      // Conversão de duração (em divisões) para tipo MusicXML.
       function stepToType(step) {
         return ({1:'16th',2:'eighth',4:'quarter',8:'half',16:'whole'})[step] || 'quarter';
       }
@@ -482,7 +491,7 @@
       document.getElementById('exportXmlBtn').addEventListener('click', exportMusicXml);
       document.getElementById('zoomIn').addEventListener('click', () => { pxPerBeat = Math.min(160, pxPerBeat + 8); redraw(); });
       document.getElementById('zoomOut').addEventListener('click', () => { pxPerBeat = Math.max(24, pxPerBeat - 8); redraw(); });
-      instrumentSel.addEventListener('change', () => { instrument = null; setStatus('Instrumento alterado.'); });
+      instrumentSel.addEventListener('change', () => { instrument = null; loadedProgram = null; setStatus('Instrumento alterado.'); });
 
       redraw();
     })();
