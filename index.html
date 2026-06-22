@@ -106,6 +106,7 @@
         defaultVelocity: 0.8
       };
       const MUSICXML_DURATION_TYPES = { 1: '16th', 2: 'eighth', 4: 'quarter', 8: 'half', 16: 'whole' };
+      const PITCH_CLASS_TO_SEMITONE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
       let notes = [];
       let noteId = 1;
@@ -237,6 +238,8 @@
       roll.addEventListener('click', () => { selectedId = null; renderNotes(); });
 
       window.addEventListener('keydown', (ev) => {
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
         if ((ev.key === 'Delete' || ev.key === 'Backspace') && selectedId !== null) {
           notes = notes.filter(n => n.id !== selectedId);
           selectedId = null;
@@ -296,6 +299,7 @@
 
       // Conversão de duração (em divisões) para tipo MusicXML.
       function stepToType(step) {
+        if (!MUSICXML_DURATION_TYPES[step]) console.warn('Duração inesperada para MusicXML:', step);
         return MUSICXML_DURATION_TYPES[step] || 'quarter';
       }
 
@@ -417,8 +421,7 @@
               const octave = +item.querySelector('pitch > octave')?.textContent;
               const alter = +item.querySelector('pitch > alter')?.textContent || 0;
               if (step && !Number.isNaN(octave)) {
-                const map = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
-                const midi = (octave + 1) * 12 + map[step] + alter;
+                const midi = (octave + 1) * 12 + PITCH_CLASS_TO_SEMITONE[step] + alter;
                 const start = isChord && out.length ? out[out.length - 1].start : beatPos;
                 out.push({ id: noteId++, start: snapBeat(start), duration: snapBeat(durBeat), pitch: Math.max(minPitch, Math.min(maxPitch, midi)), velocity: CONFIG.defaultVelocity });
               }
@@ -446,6 +449,7 @@
         const midi = new Midi();
         const track = midi.addTrack();
         if (typeof midi.header.setTempo === 'function') midi.header.setTempo(getValidBpm());
+        else console.warn('Tempo não suportado pela API atual de @tonejs/midi.');
         const ppq = midi.header.ppq || 480;
 
         notes.slice().sort((a, b) => a.start - b.start).forEach(n => {
