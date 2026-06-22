@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Piano Roll Edit</title>
+  <title>Piano Roll Edit - Editor Piano Roll</title>
   <script src="https://cdn.jsdelivr.net/npm/@tonejs/midi@2.0.28/build/Midi.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/soundfont-player@0.12.0/dist/soundfont-player.min.js"></script>
   <style>
@@ -43,7 +43,7 @@
 <body>
   <div class="app">
     <h1>Piano Roll Edit</h1>
-    <div class="sub">Importe MIDI ou MusicXML, edite no piano roll, toque com SoundFont General MIDI e exporte em MIDI ou MusicXML.</div>
+    <div class="sub">App "Piano Roll Edit": importe MIDI ou MusicXML, edite no piano roll, toque com SoundFont General MIDI e exporte em MIDI ou MusicXML.</div>
 
     <div class="toolbar">
       <input type="file" id="fileInput" accept=".mid,.midi,.xml,.musicxml" />
@@ -100,8 +100,10 @@
         snap: 0.25,
         rowHeight: 20,
         minPitch: 21,
-        maxPitch: 108
+        maxPitch: 108,
+        minNoteDurationSec: 0.03
       };
+      const MUSICXML_DURATION_TYPES = { 1: '16th', 2: 'eighth', 4: 'quarter', 8: 'half', 16: 'whole' };
 
       let notes = [];
       let noteId = 1;
@@ -267,7 +269,7 @@
         const beatSec = 60 / bpm;
         const now = audioContext.currentTime + 0.05;
         notes.slice().sort((a, b) => a.start - b.start).forEach(n => {
-          const node = instrument.play(n.pitch, now + n.start * beatSec, { duration: Math.max(0.03, n.duration * beatSec), gain: n.velocity ?? 0.8 });
+          const node = instrument.play(n.pitch, now + n.start * beatSec, { duration: Math.max(CONFIG.minNoteDurationSec, n.duration * beatSec), gain: n.velocity ?? 0.8 });
           if (node) activeNodes.push(node);
         });
         isPlaying = true;
@@ -291,7 +293,7 @@
 
       // Conversão de duração (em divisões) para tipo MusicXML.
       function stepToType(step) {
-        return ({1:'16th',2:'eighth',4:'quarter',8:'half',16:'whole'})[step] || 'quarter';
+        return MUSICXML_DURATION_TYPES[step] || 'quarter';
       }
 
       function buildSimpleMusicXml() {
@@ -367,7 +369,7 @@
         xml += `</measure>`;
 
         return `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "https://www.musicxml.org/dtds/partwise.dtd">
 <score-partwise version="3.1">
   <part-list><score-part id="P1"><part-name>Piano Roll Edit</part-name></score-part></part-list>
   <part id="P1">${xml}</part>
