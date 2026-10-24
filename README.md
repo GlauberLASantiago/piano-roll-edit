@@ -33,7 +33,7 @@ O MusicXML gerado mantém as partes, fórmula de compasso e armadura de clave, m
 
 ## Como usar
 
-Basta abrir o arquivo `index.html` em qualquer navegador moderno — não é necessário servidor web.
+Basta abrir o arquivo `index.html` em qualquer navegador moderno — não é necessário servidor web. A primeira carga precisa de conexão à internet para baixar as bibliotecas CDN e os SoundFonts.
 
 ```bash
 # Exemplo com Python
