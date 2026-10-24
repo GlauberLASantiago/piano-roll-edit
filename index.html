@@ -154,6 +154,12 @@
       };
       const MUSICXML_DURATION_TYPES = { 1: '16th', 2: 'eighth', 4: 'quarter', 8: 'half', 16: 'whole' };
       const PITCH_CLASS_TO_SEMITONE = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+      const GM_PROGRAMS = {
+        acoustic_grand_piano: 0, bright_acoustic_piano: 1, electric_piano_1: 4, harpsichord: 6,
+        church_organ: 19, acoustic_guitar_nylon: 24, acoustic_bass: 32, synth_bass_1: 38,
+        cello: 42, violin: 40, choir_aahs: 52, synth_strings_1: 50, trumpet: 56,
+        alto_sax: 65, clarinet: 71, flute: 73
+      };
 
       let notes = [];
       let tracks = [{ id: 0, name: 'Piano', channel: 0, program: 0 }];
@@ -176,7 +182,6 @@
       let transportTimer = null;
       let playheadTimer = null;
       let playheadEl = null;
-      let pitchWindow = { min: CONFIG.minPitch, max: CONFIG.maxPitch };
       let undoStack = [];
       let redoStack = [];
       let clipboard = [];
@@ -192,6 +197,7 @@
       function snapBeat(v) { const step = getSnap(); return Math.max(0, step ? Math.round(v / step) * step : v); }
       function beatsPerMeasure() { return Math.max(1, Math.min(16, +beatsPerMeasureEl.value || 4)); }
       function beatType() { return Math.max(1, Math.min(16, +beatTypeEl.value || 4)); }
+      function measureLengthBeats() { return beatsPerMeasure() * 4 / beatType(); }
       function beatsToX(b) { return b * pxPerBeat + 56; }
       function xToBeats(x) { return (x - 56) / pxPerBeat; }
       function pitchToY(p) { return (maxPitch - p) * rowH; }
@@ -266,7 +272,7 @@
           linear-gradient(to right, var(--line) 1px, transparent 1px),
           linear-gradient(to right, var(--line2) 1px, transparent 1px),
           linear-gradient(to bottom, #1b2638 1px, transparent 1px)`;
-        roll.style.backgroundSize = `${pxPerBeat * beatsPerMeasure()}px ${rowH}px, ${pxPerBeat}px ${rowH}px, ${pxPerBeat/4}px ${rowH}px, ${pxPerBeat}px ${rowH}px`;
+        roll.style.backgroundSize = `${pxPerBeat * measureLengthBeats()}px ${rowH}px, ${pxPerBeat}px ${rowH}px, ${pxPerBeat/4}px ${rowH}px, ${pxPerBeat}px ${rowH}px`;
         roll.style.backgroundPosition = `56px 20px, 56px 20px, 56px 20px, 56px 20px`;
 
         roll.querySelectorAll('.kbd,.key-label,.pitch-row,.bar-label,.playhead').forEach(e => e.remove());
@@ -288,11 +294,11 @@
             roll.appendChild(label);
           }
         }
-        for (let beat = 0; beat < beats; beat += beatsPerMeasure()) {
+        for (let beat = 0; beat < beats; beat += measureLengthBeats()) {
           const label = document.createElement('div');
           label.className = 'bar-label';
           label.style.left = beatsToX(beat) + 'px';
-          label.textContent = `Comp. ${Math.floor(beat / beatsPerMeasure()) + 1}`;
+          label.textContent = `Comp. ${Math.floor(beat / measureLengthBeats()) + 1}`;
           roll.appendChild(label);
         }
         playheadEl = document.createElement('div');
@@ -336,7 +342,7 @@
         });
       }
 
-      function redraw() { buildGrid(); renderNotes(); }
+      function redraw() { buildGrid(); renderNotes(); updatePlayhead(); }
 
       function startNoteDrag(ev, id, resizing) {
         ev.stopPropagation(); ev.preventDefault();
@@ -403,7 +409,7 @@
         const selected = selectedNotes();
         if (!selected.length) return setStatus('Selecione notas para duplicar.');
         recordUndo();
-        const offset = beatsPerMeasure();
+        const offset = measureLengthBeats();
         const copies = selected.map(n => ({ ...n, id: noteId++, start: n.start + offset }));
         notes.push(...copies);
         selectedIds = new Set(copies.map(n => n.id));
@@ -462,19 +468,26 @@
       window.addEventListener('keydown', (ev) => {
         const tag = document.activeElement?.tagName;
         const editing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+        if (editing) return;
         if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') {
           ev.preventDefault();
           ev.shiftKey ? redo() : undo();
           return;
         }
         if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y') { ev.preventDefault(); redo(); return; }
-        if (editing) return;
         if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'c') { ev.preventDefault(); copySelection(); return; }
         if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'v') { ev.preventDefault(); pasteSelection(); return; }
         if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'd') { ev.preventDefault(); duplicateSelection(); return; }
+        if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'a') {
+          ev.preventDefault();
+          selectedIds = new Set(notes.map(n => n.id));
+          selectedId = selectedIds.values().next().value ?? null;
+          renderNotes();
+          return;
+        }
         if (ev.code === 'Space') {
           ev.preventDefault();
-          if (isPlaying) pausePlayback(); else if (isPaused) resumePlayback(); else playNotes();
+          if (isPlaying) pausePlayback(); else if (isPaused) resumePlayback(); else playNotes(loopEnabled ? loopBounds().start : transportBeat);
           return;
         }
         if (ev.key === 'Home') { stopPlayback(); transportBeat = 0; updatePlayhead(); return; }
@@ -530,7 +543,7 @@
       function loopBounds() {
         const startBar = Math.max(1, +document.getElementById('loopStart').value || 1);
         const endBar = Math.max(startBar + 1, +document.getElementById('loopEnd').value || startBar + 1);
-        return { start: (startBar - 1) * beatsPerMeasure(), end: (endBar - 1) * beatsPerMeasure() };
+        return { start: (startBar - 1) * measureLengthBeats(), end: (endBar - 1) * measureLengthBeats() };
       }
       function pausePlayback() {
         if (!isPlaying || !audioContext) return;
@@ -599,6 +612,7 @@
         }
         const parsed = [];
         tracks = [];
+        keyFifths = 0;
         midi.tracks.forEach((track, index) => {
           if (!track.notes.length) return;
           const id = index;
@@ -612,13 +626,18 @@
             parsed.push({
               id: noteId++, start: n.ticks / midi.header.ppq,
               duration: Math.max(0.0625, n.durationTicks / midi.header.ppq),
-              pitch: Math.max(CONFIG.minPitch, Math.min(CONFIG.maxPitch, n.midi)),
+              pitch: Math.max(0, Math.min(127, n.midi)),
               velocity: n.velocity ?? CONFIG.defaultVelocity, trackId: id
             });
           });
         });
         if (!tracks.length) tracks = [{ id: 0, name: 'Piano', channel: 0, program: 0 }];
         activeTrackId = tracks[0].id;
+        nextTrackId = Math.max(1, ...tracks.map(t => t.id + 1));
+        const programName = Object.keys(GM_PROGRAMS).find(name => GM_PROGRAMS[name] === tracks[0].program);
+        if (programName) instrumentSel.value = programName;
+        instrument = null;
+        loadedProgram = null;
         refreshTracks();
         return parsed.sort((a, b) => a.start - b.start);
       }
@@ -631,7 +650,6 @@
 
       function buildSimpleMusicXml() {
         const divisions = 4;
-        const measureBeats = beatsPerMeasure();
         const signatureType = beatType();
 
         function pitchToXml(p) {
@@ -661,7 +679,7 @@
           function writeMeasureStart(withAttr) {
             xml += `<measure number="${measureNo}">`;
             if (withAttr) {
-              xml += `<attributes><divisions>${divisions}</divisions><key><fifths>${keyFifths}</fifths></key><time><beats>${measureBeats}</beats><beat-type>${signatureType}</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>`;
+              xml += `<attributes><divisions>${divisions}</divisions><key><fifths>${keyFifths}</fifths></key><time><beats>${beatsPerMeasure()}</beats><beat-type>${signatureType}</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>`;
               xml += `<direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${getValidBpm()}</per-minute></metronome></direction-type><sound tempo="${getValidBpm()}"/></direction>`;
             }
           }
@@ -675,7 +693,7 @@
           }
           writeMeasureStart(true);
           let measureStart = 0;
-          const measureLen = divisions * measureBeats;
+          const measureLen = divisions * measureLengthBeats();
           starts.forEach(start => {
             while (start >= measureStart + measureLen) {
               if (cursor < measureStart + measureLen) writeRest((measureStart + measureLen) - cursor);
@@ -693,7 +711,7 @@
               const type = stepToType(dur >= 16 ? 16 : dur >= 8 ? 8 : dur >= 4 ? 4 : dur >= 2 ? 2 : 1);
               xml += `<note>${idx > 0 ? '<chord/>' : ''}${pitchToXml(n.pitch)}<duration>${dur}</duration><type>${type}</type></note>`;
             });
-            cursor += Math.max(1, Math.round(chord[0].duration * divisions));
+            cursor += Math.max(1, Math.round(Math.max(...chord.map(n => n.duration)) * divisions));
           });
           while (cursor < measureStart + measureLen) writeRest((measureStart + measureLen) - cursor);
           xml += `</measure>`;
@@ -735,6 +753,8 @@
               const fifths = attributes.querySelector('key > fifths');
               if (fifths && Number.isFinite(+fifths.textContent)) keyFifths = Math.max(-7, Math.min(7, +fifths.textContent));
             });
+            const tempo = +(measure.querySelector(':scope > direction sound[tempo]')?.getAttribute('tempo') || 0);
+            if (tempo >= 30 && tempo <= 300) bpmEl.value = Math.round(tempo);
             measure.querySelectorAll(':scope > note, :scope > backup, :scope > forward').forEach(item => {
               if (item.tagName === 'backup' || item.tagName === 'forward') {
                 const dur = +item.querySelector('duration')?.textContent || 0;
@@ -753,7 +773,7 @@
                   const midiPitch = (octave + 1) * 12 + PITCH_CLASS_TO_SEMITONE[step] + alter;
                   const previous = out[out.length - 1];
                   const start = isChord && previous?.trackId === id ? previous.start : beatPos;
-                  out.push({ id: noteId++, start: snapBeat(start), duration: snapBeat(durBeat), pitch: Math.max(CONFIG.minPitch, Math.min(CONFIG.maxPitch, midiPitch)), velocity: CONFIG.defaultVelocity, trackId: id });
+                  out.push({ id: noteId++, start: snapBeat(start), duration: snapBeat(durBeat),                   pitch: Math.max(0, Math.min(127, midiPitch)), velocity: CONFIG.defaultVelocity, trackId: id });
                 }
               }
               if (!isChord) beatPos += durBeat;
@@ -761,6 +781,7 @@
           });
         });
         activeTrackId = tracks[0]?.id ?? 0;
+        nextTrackId = Math.max(1, ...tracks.map(t => t.id + 1));
         refreshTracks();
         return out.sort((a, b) => a.start - b.start);
       }
@@ -840,6 +861,10 @@
           undoStack = [];
           redoStack = [];
           noteId = Math.max(1, ...notes.map(n => n.id + 1));
+          if (document.getElementById('pitchRange').value === 'all' && notes.length) {
+            minPitch = Math.min(CONFIG.minPitch, ...notes.map(n => n.pitch));
+            maxPitch = Math.max(CONFIG.maxPitch, ...notes.map(n => n.pitch));
+          }
           dirty = false;
           updateHistoryButtons();
           redraw();
@@ -853,7 +878,7 @@
       document.getElementById('playBtn').addEventListener('click', () => {
         if (isPlaying) pausePlayback();
         else if (isPaused) resumePlayback();
-        else playNotes(transportBeat);
+        else playNotes(loopEnabled ? loopBounds().start : transportBeat);
       });
       document.getElementById('stopBtn').addEventListener('click', () => { stopPlayback(); transportBeat = 0; updatePlayhead(); setStatus('Parado.'); });
       document.getElementById('exportMidiBtn').addEventListener('click', exportMidi);
@@ -875,12 +900,21 @@
       document.getElementById('newTrackBtn').addEventListener('click', () => {
         recordUndo();
         const id = nextTrackId++;
-        tracks.push({ id, name: `Faixa ${tracks.length + 1}`, channel: tracks.length % 16, program: instrumentSel.selectedIndex });
+        tracks.push({ id, name: `Faixa ${tracks.length + 1}`, channel: tracks.length % 16, program: GM_PROGRAMS[instrumentSel.value] ?? 0 });
         activeTrackId = id;
         refreshTracks();
         markDirty();
       });
-      trackSel.addEventListener('change', () => { activeTrackId = +trackSel.value; });
+      trackSel.addEventListener('change', () => {
+        activeTrackId = +trackSel.value;
+        const track = tracks.find(t => t.id === activeTrackId);
+        const programName = Object.keys(GM_PROGRAMS).find(name => GM_PROGRAMS[name] === track?.program);
+        if (programName && instrumentSel.value !== programName) {
+          instrumentSel.value = programName;
+          instrument = null;
+          loadedProgram = null;
+        }
+      });
       velocityEl.addEventListener('input', () => {
         const value = +velocityEl.value;
         document.getElementById('velocityValue').textContent = value;
@@ -903,9 +937,11 @@
         markDirty();
       });
       document.getElementById('pitchRange').addEventListener('change', (ev) => {
-        const ranges = { all: [21, 108], low: [21, 52], mid: [48, 84], high: [72, 108] };
+        const ranges = {
+          all: [Math.min(21, ...notes.map(n => n.pitch)), Math.max(108, ...notes.map(n => n.pitch))],
+          low: [21, 52], mid: [48, 84], high: [72, 108]
+        };
         [minPitch, maxPitch] = ranges[ev.target.value];
-        pitchWindow = { min: minPitch, max: maxPitch };
         redraw();
       });
       roll.addEventListener('click', (ev) => {
