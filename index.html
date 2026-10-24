@@ -17,27 +17,50 @@
       --accent: #4f46e5;
       --note: #22c55e;
       --note-sel: #f59e0b;
+      --ruler: #0b1220;
     }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Inter, system-ui, sans-serif; background: var(--bg); color: var(--text); }
-    .app { max-width: 1300px; margin: 0 auto; padding: 16px; }
+    .app { max-width: 1600px; margin: 0 auto; padding: 16px; }
     h1 { margin: 0 0 4px; font-size: 22px; }
     .sub { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
-    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; background: var(--panel); padding: 10px; border-radius: 10px; margin-bottom: 10px; }
-    .btn, select, input { height: 34px; border-radius: 8px; border: 1px solid var(--line); background: #0b1220; color: var(--text); }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; background: var(--panel); padding: 10px; border-radius: 10px; margin-bottom: 8px; }
+    .btn, select, input { min-height: 34px; border-radius: 8px; border: 1px solid var(--line); background: #0b1220; color: var(--text); }
     .btn { padding: 0 12px; cursor: pointer; }
-    .btn:hover { border-color: #64748b; }
+    .btn:hover, select:hover, input:hover { border-color: #64748b; }
+    .btn:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #818cf8; outline-offset: 2px; }
+    .btn[aria-pressed="true"] { background: #312e81; border-color: #818cf8; }
     select, input { padding: 0 10px; }
     .grow { flex: 1; }
     .status { font-size: 12px; color: var(--muted); margin: 6px 2px 10px; min-height: 18px; }
-    .roll-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: auto; height: 70vh; position: relative; }
+    .roll-wrap { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: auto; height: 72vh; min-height: 320px; position: relative; touch-action: pan-x pan-y; }
     #roll { position: relative; min-height: 400px; min-width: 1200px; }
-    .note { position: absolute; border-radius: 4px; background: var(--note); border: 1px solid #15803d; cursor: move; }
+    .note { position: absolute; z-index: 2; border-radius: 4px; background: var(--note); border: 1px solid #15803d; cursor: grab; touch-action: none; }
+    .note:active { cursor: grabbing; }
     .note.selected { background: var(--note-sel); border-color: #b45309; }
-    .resize-handle { position: absolute; right: 0; top: 0; width: 8px; height: 100%; background: rgba(0,0,0,.25); cursor: ew-resize; }
-    .kbd { position: sticky; left: 0; top: 0; background: rgba(2,6,23,.92); border-right: 1px solid var(--line); width: 56px; z-index: 3; }
+    .note.other-track { filter: hue-rotate(var(--track-hue)); }
+    .note.selected { z-index: 4; }
+    .resize-handle { position: absolute; right: 0; top: 0; width: 8px; height: 100%; background: rgba(0,0,0,.25); cursor: ew-resize; touch-action: none; }
+    .kbd { position: absolute; left: 0; top: 0; background: rgba(2,6,23,.92); border-right: 1px solid var(--line); width: 56px; z-index: 3; pointer-events: none; }
     .key-label { position: absolute; left: 0; width: 56px; height: 20px; border-bottom: 1px solid #0f172a; font-size: 10px; color: #cbd5e1; padding-left: 4px; display:flex;align-items:center; }
-    .help { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    .pitch-row { position:absolute; left:56px; right:0; height:20px; pointer-events:none; z-index:0; }
+    .pitch-row.black { background:rgba(2,6,23,.42); }
+    .bar-label { position:absolute; top:0; height:20px; padding:2px 4px; color:#cbd5e1; font-size:10px; border-left:1px solid #64748b; background:rgba(2,6,23,.82); z-index:3; pointer-events:none; }
+    .playhead { position:absolute; top:0; width:2px; background:#ef4444; height:100%; z-index:5; pointer-events:none; display:none; }
+    .playhead::before { content:""; position:absolute; top:0; left:-4px; border-left:5px solid transparent; border-right:5px solid transparent; border-top:7px solid #ef4444; }
+    .meter { display:inline-flex; align-items:center; gap:4px; }
+    .meter input { width:48px; }
+    .help { color: var(--muted); font-size: 12px; margin-top: 8px; line-height:1.6; }
+    .velocity-wrap { display:inline-flex; align-items:center; gap:5px; font-size:12px; }
+    #velocity { width:100px; min-height:24px; accent-color:#818cf8; }
+    @media (max-width: 700px) {
+      .app { padding:8px; }
+      h1 { font-size:19px; }
+      .toolbar { gap:6px; padding:8px; }
+      .toolbar label { font-size:12px; }
+      .roll-wrap { height:62vh; }
+      .btn { padding:0 9px; }
+    }
   </style>
 </head>
 <body>
@@ -48,9 +71,27 @@
     <div class="toolbar">
       <label for="fileInput">Arquivo</label>
       <input type="file" id="fileInput" aria-label="Carregar arquivo MIDI ou MusicXML" accept=".mid,.midi,.xml,.musicxml" />
-      <button class="btn" id="playBtn">Tocar</button>
-      <button class="btn" id="stopBtn">Parar</button>
+      <button class="btn" id="playBtn" aria-label="Reproduzir ou pausar" title="Reproduzir/Pausar (Espaço)">Tocar</button>
+      <button class="btn" id="stopBtn" title="Parar e voltar ao início (Home)">Parar</button>
+      <button class="btn" id="undoBtn" title="Desfazer (Ctrl+Z)" disabled>Desfazer</button>
+      <button class="btn" id="redoBtn" title="Refazer (Ctrl+Shift+Z)" disabled>Refazer</button>
       <label>BPM <input id="bpm" type="number" min="30" max="300" value="120" style="width:78px" /></label>
+      <label class="meter">Compasso <input id="beatsPerMeasure" type="number" min="1" max="16" value="4" aria-label="Tempos por compasso" />/<input id="beatType" type="number" min="1" max="16" value="4" aria-label="Unidade de tempo" /></label>
+      <label>Grade <select id="snapSel" aria-label="Resolução da grade">
+        <option value="0.0625">1/16</option><option value="0.125">1/8</option><option value="0.25" selected>1/4</option><option value="0.5">1/2</option><option value="1">1 tempo</option><option value="2">2 tempos</option><option value="off">Livre</option>
+      </select></label>
+      <label>Faixa <select id="pitchRange" aria-label="Faixa de notas">
+        <option value="all" selected>Todas</option><option value="low">Graves</option><option value="mid">Médias</option><option value="high">Agudas</option>
+      </select></label>
+      <label>Faixa MIDI <select id="trackSel" aria-label="Faixa MIDI"></select></label>
+      <button class="btn" id="newTrackBtn">+ Faixa</button>
+      <label class="velocity-wrap">Velocidade <input id="velocity" type="range" min="1" max="127" value="102" aria-label="Velocidade das notas selecionadas" /><span id="velocityValue">102</span></label>
+      <button class="btn" id="quantizeBtn" title="Quantizar seleção">Quantizar</button>
+      <button class="btn" id="duplicateBtn" title="Duplicar seleção (Ctrl+D)">Duplicar</button>
+      <button class="btn" id="transposeUpBtn" title="Transpor uma oitava para cima">+ Oitava</button>
+      <button class="btn" id="transposeDownBtn" title="Transpor uma oitava para baixo">- Oitava</button>
+      <label class="meter">Loop <input id="loopStart" type="number" min="0" step="1" value="0" aria-label="Compasso inicial do loop" />–<input id="loopEnd" type="number" min="1" step="1" value="4" aria-label="Compasso final do loop" /></label>
+      <button class="btn" id="loopBtn" aria-pressed="false" title="Ativar repetição">Loop</button>
       <label>Instrumento
         <select id="instrumentSel">
           <option value="acoustic_grand_piano">Acoustic Grand Piano</option>
@@ -81,11 +122,11 @@
     <div class="status" id="status">Carregue um arquivo para começar.</div>
 
     <div class="roll-wrap" id="rollWrap">
-      <div id="roll"></div>
+      <div id="roll" tabindex="0" role="application" aria-label="Piano roll. Use setas para navegar e espaço para reproduzir."></div>
     </div>
 
     <div class="help">
-      Clique duplo para criar nota. Arraste nota para mover. Arraste a borda direita para redimensionar. Delete/Backspace remove a nota selecionada.
+      Duplo clique cria nota · arraste para mover · arraste a borda para redimensionar · Shift+clique seleciona várias · Ctrl+C/V copia/cola · Delete remove · Ctrl+Z desfaz · setas transpõem/movem · Espaço reproduz · Home volta ao início. Exportar MIDI preserva faixas, canais e programas.
     </div>
   </div>
 
